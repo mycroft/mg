@@ -1,7 +1,29 @@
 use anyhow::{Error, Result};
 use std::{fs, path::PathBuf};
 
+use clap::Parser;
+use clap::Subcommand;
+
+#[derive(Parser)]
+#[command(name = "mg", about = "A simple git clone")]
+struct Cli {
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Initialize a new Git repository
+    Init {
+        /// The path where to create the repository. Defaults to current directory
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+}
+
 fn init_repository(path: PathBuf) -> Result<PathBuf> {
+    println!("Creating in {:?}", path);
+
     let git_dir = path.join(".git");
 
     fs::create_dir(&git_dir)?;
@@ -14,14 +36,14 @@ fn init_repository(path: PathBuf) -> Result<PathBuf> {
 }
 
 fn main() -> Result<(), Error> {
-    let mut current_dir = std::env::current_dir()?;
-    let env_dir = std::env::var("REPO_PATH");
+    let cli = Cli::parse();
 
-    if let Ok(path) = env_dir {
-        current_dir = PathBuf::from(path);
+    match cli.command {
+        Command::Init { path } => match init_repository(path) {
+            Ok(path) => println!("Initialized empty Git repository in {:?}", path),
+            Err(e) => eprintln!("Failed to initialize repository: {}", e),
+        },
     }
-
-    let repository = init_repository(current_dir)?;
 
     Ok(())
 }
