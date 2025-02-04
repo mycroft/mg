@@ -61,7 +61,7 @@ fn main() -> Result<(), Error> {
             Err(e) => eprintln!("Failed to initialize repository: {}", e),
         },
         Command::CatFile { hash } => match read_object(&path, &hash) {
-            Ok(mut obj) => println!("{}", obj.to_string()?),
+            Ok(mut obj) => println!("{}", obj.string()?),
             Err(e) => eprintln!("Failed to read object: {}", e),
         },
     }

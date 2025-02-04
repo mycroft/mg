@@ -62,7 +62,7 @@ pub fn read_object(path: &Path, object: &str) -> Result<Object<impl BufRead>> {
 }
 
 impl<R: BufRead> Object<R> {
-    pub fn to_string(&mut self) -> Result<String> {
+    pub fn string(&mut self) -> Result<String> {
         let mut buf: Vec<u8> = Vec::new();
         let mut buf_hash: [u8; 20] = [0; 20];
 
