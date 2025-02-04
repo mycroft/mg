@@ -18,11 +18,11 @@ pub struct Object<Reader> {
 }
 
 #[derive(Debug)]
-struct TreeObject {
-    mode: String,
-    kind: Kind,
-    name: String,
-    hash: [u8; 20],
+pub struct TreeObject {
+    pub mode: String,
+    pub kind: Kind,
+    pub name: String,
+    pub hash: [u8; 20],
 }
 
 pub fn read_object(path: &Path, object: &str) -> Result<Object<impl BufRead>> {
@@ -80,7 +80,7 @@ fn is_path_in_repo(repo_path: &Path, file_path: &Path) -> Result<bool> {
     Ok(file_canonical.starts_with(repo_canonical))
 }
 
-pub fn hash_file(file: &Path) -> Result<String> {
+pub fn hash_file(file: &Path) -> Result<[u8; 20]> {
     let fd = File::open(file).context("opening file for sha1")?;
     let mut buf_reader = std::io::BufReader::new(fd);
 
@@ -91,27 +91,27 @@ pub fn hash_file(file: &Path) -> Result<String> {
     let mut hasher = Sha1::new();
     hasher.update(header.as_bytes());
     copy(&mut buf_reader, &mut hasher)?;
-    let hash_bytes = hasher.finalize();
 
-    Ok(hex::encode(hash_bytes))
+    Ok(hasher.finalize().into())
 }
 
-pub fn write_object(repo_path: &Path, file: &Path) -> Result<String> {
+pub fn write_object(repo_path: &Path, file: &Path) -> Result<[u8; 20]> {
     if !file.exists() || !is_path_in_repo(repo_path, file)? {
         return Err(anyhow!("path does not exist"));
     }
 
     let hash = hash_file(file)?;
+    let hash_str = hex::encode(hash);
     let bytes_num = file.metadata()?.len();
     let mut buf_reader = std::io::BufReader::new(File::open(file)?);
 
-    let target_dir = repo_path.join(".git").join("objects").join(&hash[..2]);
+    let target_dir = repo_path.join(".git").join("objects").join(&hash_str[..2]);
 
     if !target_dir.exists() {
         create_dir(&target_dir).context("could not create directory in .git/objects")?;
     }
 
-    let target_file = target_dir.join(&hash[2..]);
+    let target_file = target_dir.join(&hash_str[2..]);
     let file_out_fd = File::create(target_file).context("could not open target file")?;
 
     let mut zlib_out = ZlibEncoder::new(file_out_fd, Compression::default());

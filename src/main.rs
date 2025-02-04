@@ -8,9 +8,10 @@ use clap::Subcommand;
 mod error;
 mod kind;
 mod object;
+mod tree;
 
-use crate::object::read_object;
-use crate::object::write_object;
+use crate::object::{read_object, write_object};
+use crate::tree::write_tree;
 
 #[derive(Parser)]
 #[command(name = "mg", about = "A simple git clone")]
@@ -37,6 +38,11 @@ enum Command {
         /// The file to write
         file: PathBuf,
     },
+    /// Write a tree object
+    WriteTree {
+        /// The path to write
+        path: PathBuf,
+    },
 }
 
 fn default_init_path() -> PathBuf {
@@ -59,20 +65,24 @@ fn init_repository(path: PathBuf) -> Result<PathBuf> {
 
 fn main() -> Result<(), Error> {
     let cli = Cli::parse();
-    let path = default_init_path();
+    let repo_path = default_init_path();
 
     match cli.command {
         Command::Init { path } => match init_repository(path) {
             Ok(path) => println!("Initialized empty Git repository in {:?}", path),
             Err(e) => eprintln!("Failed to initialize repository: {}", e),
         },
-        Command::CatFile { hash } => match read_object(&path, &hash) {
+        Command::CatFile { hash } => match read_object(&repo_path, &hash) {
             Ok(mut obj) => print!("{}", obj.string()?),
             Err(e) => eprintln!("Failed to read object: {}", e),
         },
-        Command::WriteBlob { file } => match write_object(&path, &file) {
-            Ok(hash) => println!("{}", hash),
+        Command::WriteBlob { file } => match write_object(&repo_path, &file) {
+            Ok(hash) => println!("{}", hex::encode(hash)),
             Err(e) => eprintln!("Failed to write object: {}", e),
+        },
+        Command::WriteTree { path } => match write_tree(&repo_path, &path) {
+            Ok(hash) => println!("{}", hex::encode(hash)),
+            Err(e) => eprintln!("Failed to write tree: {}", e),
         },
     }
 
