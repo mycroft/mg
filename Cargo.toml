@@ -5,4 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.95"
-clap = { version = "4.5.27", features = ["derive"] }
+clap = { version = "4.5.27", features = ["derive", "string"] }
+flate2 = "1.0.35"
+hex = "0.4.3"
+thiserror = "2.0.11"
