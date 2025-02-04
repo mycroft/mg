@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use sha1::{Digest, Sha1};
+use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 
 use crate::kind::Kind;
@@ -23,11 +24,11 @@ pub fn write_tree(_repo_path: &PathBuf, path: &PathBuf) -> Result<[u8; 20]> {
             kind = Kind::Tree;
         } else {
             hash = hash_file(&file_path)?;
-            kind = Kind::Blob;
+            kind = Kind::Blob(file_path.metadata()?.mode() & 0o111 != 0);
         }
 
         entries.push(TreeObject {
-            mode: "100644".to_string(),
+            mode: kind.to_mode().to_string(),
             kind,
             name: file_name.into_string().unwrap(),
             hash,

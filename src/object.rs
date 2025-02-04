@@ -53,7 +53,7 @@ pub fn read_object(path: &Path, object: &str) -> Result<Object<impl BufRead>> {
     };
 
     let object_type = match object_type {
-        "blob" => Kind::Blob,
+        "blob" => Kind::Blob(true),
         "commit" => Kind::Commit,
         "tree" => Kind::Tree,
         _ => anyhow::bail!("invalid object type found"),
@@ -128,7 +128,7 @@ impl<R: BufRead> Object<R> {
         let mut buf_hash: [u8; 20] = [0; 20];
 
         let res = match self.kind {
-            Kind::Blob | Kind::Commit => {
+            Kind::Blob(_) | Kind::Commit => {
                 self.data.read_to_end(&mut buf)?;
                 String::from_utf8(buf)?
             }
