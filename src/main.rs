@@ -10,6 +10,7 @@ mod kind;
 mod object;
 
 use crate::object::read_object;
+use crate::object::write_object;
 
 #[derive(Parser)]
 #[command(name = "mg", about = "A simple git clone")]
@@ -30,6 +31,11 @@ enum Command {
     CatFile {
         /// The object to display
         hash: String,
+    },
+    /// Write a blob object
+    WriteBlob {
+        /// The file to write
+        file: PathBuf,
     },
 }
 
@@ -61,8 +67,12 @@ fn main() -> Result<(), Error> {
             Err(e) => eprintln!("Failed to initialize repository: {}", e),
         },
         Command::CatFile { hash } => match read_object(&path, &hash) {
-            Ok(mut obj) => println!("{}", obj.string()?),
+            Ok(mut obj) => print!("{}", obj.string()?),
             Err(e) => eprintln!("Failed to read object: {}", e),
+        },
+        Command::WriteBlob { file } => match write_object(&path, &file) {
+            Ok(hash) => println!("{}", hash),
+            Err(e) => eprintln!("Failed to write object: {}", e),
         },
     }
 
