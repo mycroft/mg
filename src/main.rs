@@ -1,6 +1,7 @@
 use anyhow::{Context, Error, Result};
 use std::env;
 use std::io::prelude::*;
+use std::path::Path;
 use std::{fs, path::PathBuf};
 
 use clap::Parser;
@@ -37,7 +38,7 @@ pub enum RuntimeError {
 #[derive(Debug)]
 enum Kind {
     Blob,    // 100644 or 100755
-    Commit,  // 120000
+    Commit,  // 160000
     Tree,    // 040000
     Symlink, // 120000
 }
@@ -46,8 +47,10 @@ impl Kind {
     fn from_mode(mode: &str) -> Result<Self> {
         match mode {
             "100644" | "100755" => Ok(Kind::Blob),
-            "120000" => Ok(Kind::Commit),
+            "160000" => Ok(Kind::Commit),
+            "120000" => Ok(Kind::Symlink),
             "040000" | "40000" => Ok(Kind::Tree),
+
             _ => Err(anyhow::anyhow!(format!("invalid mode: {}", mode))),
         }
     }
@@ -65,7 +68,7 @@ impl Kind {
 #[derive(Debug)]
 struct Object<Reader> {
     kind: Kind,
-    size: usize,
+    _size: usize,
     data: Reader,
 }
 
@@ -95,7 +98,7 @@ fn init_repository(path: PathBuf) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn read_object(path: &PathBuf, object: &str) -> Result<Object<impl BufRead>> {
+fn read_object(path: &Path, object: &str) -> Result<Object<impl BufRead>> {
     let object_path = path
         .join(".git")
         .join("objects")
@@ -133,7 +136,7 @@ fn read_object(path: &PathBuf, object: &str) -> Result<Object<impl BufRead>> {
 
     Ok(Object {
         kind: object_type,
-        size: object_size,
+        _size: object_size,
         data: buf_reader,
     })
 }
@@ -153,7 +156,7 @@ impl<R: BufRead> Object<R> {
                 let mut entries = Vec::new();
                 loop {
                     let read_bytes_len = self.data.read_until(0, &mut buf)?;
-                    if read_bytes_len <= 0 {
+                    if read_bytes_len == 0 {
                         break;
                     }
 
@@ -180,7 +183,7 @@ impl<R: BufRead> Object<R> {
                         name: name.to_string(),
                         kind: Kind::from_mode(mode)?,
                         mode: mode.to_string(),
-                        hash: buf_hash.clone(),
+                        hash: buf_hash,
                     });
                 }
 
