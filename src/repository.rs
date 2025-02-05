@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::{
     env,
     fs::{create_dir, read_to_string},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub struct Repository {
@@ -42,8 +42,8 @@ impl Repository {
         Ok(true)
     }
 
-    pub fn init_repository(&mut self, path: &PathBuf) -> Result<PathBuf> {
-        self.path = path.clone();
+    pub fn init_repository(&mut self, path: &Path) -> Result<PathBuf> {
+        self.path = path.to_path_buf();
         let git_dir = self.path.join(".git");
 
         create_dir(&git_dir)?;

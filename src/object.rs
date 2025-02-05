@@ -77,7 +77,7 @@ impl Repository {
 
         let content = std::fs::read(file)?;
 
-        Ok(self.write_object(Kind::Blob(false), &content)?)
+        self.write_object(Kind::Blob(false), &content)
     }
 
     pub fn write_object(&self, kind: Kind, content: &[u8]) -> Result<[u8; 20]> {
@@ -102,7 +102,7 @@ impl Repository {
         let mut zlib_out = ZlibEncoder::new(file_out_fd, Compression::default());
         write!(zlib_out, "{} {}\0", kind.string(), content.len())
             .context("could not write header")?;
-        zlib_out.write(content)?;
+        zlib_out.write_all(content)?;
         zlib_out
             .finish()
             .context("could not compress or write file")?;

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use clap::Subcommand;
 
+mod commit;
 mod error;
 mod kind;
 mod object;
@@ -43,6 +44,18 @@ enum Command {
         /// The path to write
         path: PathBuf,
     },
+    /// Commit current changes
+    Commit {
+        /// The commit message
+        message: String,
+    },
+    /// Get the current branch
+    Branch,
+    /// Get the latest commit
+    Show {
+        /// The commit to show
+        hash: Option<String>,
+    },
 }
 
 fn main() -> Result<(), Error> {
@@ -66,6 +79,18 @@ fn main() -> Result<(), Error> {
         Command::WriteTree { path } => match repo.write_tree(&path) {
             Ok(hash) => println!("{}", hex::encode(hash)),
             Err(e) => eprintln!("Failed to write tree: {}", e),
+        },
+        Command::Commit { message } => match repo.commit(&message) {
+            Ok(hash) => println!("{}", hex::encode(hash)),
+            Err(e) => eprintln!("Failed to commit: {}", e),
+        },
+        Command::Branch => match repo.current_branch() {
+            Ok(branch) => println!("{}", branch),
+            Err(e) => eprintln!("Failed to get branch: {}", e),
+        },
+        Command::Show { hash } => match repo.show(hash) {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to show: {}", e),
         },
     }
 
