@@ -1,6 +1,6 @@
 use anyhow::{Error, Result};
-use std::env;
-use std::{fs, path::PathBuf};
+use repository::default_init_path;
+use std::path::PathBuf;
 
 use clap::Parser;
 use clap::Subcommand;
@@ -8,10 +8,10 @@ use clap::Subcommand;
 mod error;
 mod kind;
 mod object;
+mod repository;
 mod tree;
 
-use crate::object::{read_object, write_blob};
-use crate::tree::write_tree;
+use crate::repository::Repository;
 
 #[derive(Parser)]
 #[command(name = "mg", about = "A simple git clone")]
@@ -45,42 +45,25 @@ enum Command {
     },
 }
 
-fn default_init_path() -> PathBuf {
-    env::var("REPO_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
-}
-
-fn init_repository(path: PathBuf) -> Result<PathBuf> {
-    let git_dir = path.join(".git");
-
-    fs::create_dir(&git_dir)?;
-    fs::create_dir(git_dir.join("objects"))?;
-    fs::create_dir(git_dir.join("refs"))?;
-
-    fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n")?;
-
-    Ok(path)
-}
-
 fn main() -> Result<(), Error> {
     let cli = Cli::parse();
-    let repo_path = default_init_path();
+
+    let mut repo = Repository::new()?;
 
     match cli.command {
-        Command::Init { path } => match init_repository(path) {
+        Command::Init { path } => match repo.init_repository(&path) {
             Ok(path) => println!("Initialized empty Git repository in {:?}", path),
             Err(e) => eprintln!("Failed to initialize repository: {}", e),
         },
-        Command::CatFile { hash } => match read_object(&repo_path, &hash) {
+        Command::CatFile { hash } => match repo.read_object(&hash) {
             Ok(mut obj) => print!("{}", obj.string()?),
             Err(e) => eprintln!("Failed to read object: {}", e),
         },
-        Command::WriteBlob { file } => match write_blob(&repo_path, &file) {
+        Command::WriteBlob { file } => match repo.write_blob(&file) {
             Ok(hash) => println!("{}", hex::encode(hash)),
             Err(e) => eprintln!("Failed to write object: {}", e),
         },
-        Command::WriteTree { path } => match write_tree(&repo_path, &path) {
+        Command::WriteTree { path } => match repo.write_tree(&path) {
             Ok(hash) => println!("{}", hex::encode(hash)),
             Err(e) => eprintln!("Failed to write tree: {}", e),
         },

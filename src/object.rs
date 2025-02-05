@@ -1,3 +1,4 @@
+use crate::repository::Repository;
 use crate::{error::RuntimeError, kind::Kind};
 use anyhow::{anyhow, Context, Result};
 use flate2::{write::ZlibEncoder, Compression};
@@ -24,47 +25,90 @@ pub struct TreeObject {
     pub hash: [u8; 20],
 }
 
-pub fn read_object(path: &Path, object: &str) -> Result<Object<impl BufRead>> {
-    let object_path = path
-        .join(".git")
-        .join("objects")
-        .join(&object[..2])
-        .join(&object[2..]);
+impl Repository {
+    pub fn read_object(&self, object: &str) -> Result<Object<impl BufRead>> {
+        let object_path = self
+            .path
+            .join(".git")
+            .join("objects")
+            .join(&object[..2])
+            .join(&object[2..]);
 
-    let fd = File::open(&object_path).context("opening the object")?;
-    let zfd = flate2::read::ZlibDecoder::new(fd);
-    let mut buf_reader = std::io::BufReader::new(zfd);
+        let fd = File::open(&object_path).context("opening the object")?;
+        let zfd = flate2::read::ZlibDecoder::new(fd);
+        let mut buf_reader = std::io::BufReader::new(zfd);
 
-    let mut buf: Vec<u8> = Vec::new();
-    buf_reader
-        .read_until(0, &mut buf)
-        .context("read the object")?;
+        let mut buf: Vec<u8> = Vec::new();
+        buf_reader
+            .read_until(0, &mut buf)
+            .context("read the object")?;
 
-    match buf.pop() {
-        Some(0) => {}
-        Some(_) | None => return Err(RuntimeError::UnexpectedChar.into()),
-    };
+        match buf.pop() {
+            Some(0) => {}
+            Some(_) | None => return Err(RuntimeError::UnexpectedChar.into()),
+        };
 
-    let header = String::from_utf8(buf.clone()).context("converting header to utf-8")?;
+        let header = String::from_utf8(buf.clone()).context("converting header to utf-8")?;
 
-    let Some((object_type, object_size)) = header.split_once(' ') else {
-        anyhow::bail!("could not parse object header correctly");
-    };
+        let Some((object_type, object_size)) = header.split_once(' ') else {
+            anyhow::bail!("could not parse object header correctly");
+        };
 
-    let object_type = match object_type {
-        "blob" => Kind::Blob(true),
-        "commit" => Kind::Commit,
-        "tree" => Kind::Tree,
-        _ => anyhow::bail!("invalid object type found"),
-    };
+        let object_type = match object_type {
+            "blob" => Kind::Blob(true),
+            "commit" => Kind::Commit,
+            "tree" => Kind::Tree,
+            _ => anyhow::bail!("invalid object type found"),
+        };
 
-    let object_size = object_size.parse::<usize>()?;
+        let object_size = object_size.parse::<usize>()?;
 
-    Ok(Object {
-        kind: object_type,
-        _size: object_size,
-        data: buf_reader,
-    })
+        Ok(Object {
+            kind: object_type,
+            _size: object_size,
+            data: buf_reader,
+        })
+    }
+
+    pub fn write_blob(&self, file: &Path) -> Result<[u8; 20]> {
+        if !file.exists() || !is_path_in_repo(&self.path, file)? {
+            return Err(anyhow!("path does not exist"));
+        }
+
+        let content = std::fs::read(file)?;
+
+        Ok(self.write_object(Kind::Blob(false), &content)?)
+    }
+
+    pub fn write_object(&self, kind: Kind, content: &[u8]) -> Result<[u8; 20]> {
+        let mut hasher = Sha1::new();
+        hasher.update(format!("{} {}\0", kind.string(), content.len()).as_bytes());
+        hasher.update(content);
+        let hash = hasher.finalize().into();
+        let hash_str = hex::encode(hash);
+
+        let target_dir = self.path.join(".git").join("objects").join(&hash_str[..2]);
+        if !target_dir.exists() {
+            create_dir(&target_dir).context("could not create directory in .git/objects")?;
+        }
+
+        let target_file = target_dir.join(&hash_str[2..]);
+        if target_file.exists() {
+            return Ok(hash);
+        }
+
+        let file_out_fd = File::create(target_file).context("could not open target file")?;
+
+        let mut zlib_out = ZlibEncoder::new(file_out_fd, Compression::default());
+        write!(zlib_out, "{} {}\0", kind.string(), content.len())
+            .context("could not write header")?;
+        zlib_out.write(content)?;
+        zlib_out
+            .finish()
+            .context("could not compress or write file")?;
+
+        Ok(hash)
+    }
 }
 
 fn is_path_in_repo(repo_path: &Path, file_path: &Path) -> Result<bool> {
@@ -77,45 +121,6 @@ fn is_path_in_repo(repo_path: &Path, file_path: &Path) -> Result<bool> {
 
     // Check if file_path starts with repo_path
     Ok(file_canonical.starts_with(repo_canonical))
-}
-
-pub fn write_blob(repo_path: &Path, file: &Path) -> Result<[u8; 20]> {
-    if !file.exists() || !is_path_in_repo(repo_path, file)? {
-        return Err(anyhow!("path does not exist"));
-    }
-
-    let content = std::fs::read(file)?;
-
-    Ok(write_object(repo_path, Kind::Blob(false), &content)?)
-}
-
-pub fn write_object(repo_path: &Path, kind: Kind, content: &[u8]) -> Result<[u8; 20]> {
-    let mut hasher = Sha1::new();
-    hasher.update(format!("{} {}\0", kind.string(), content.len()).as_bytes());
-    hasher.update(content);
-    let hash = hasher.finalize().into();
-    let hash_str = hex::encode(hash);
-
-    let target_dir = repo_path.join(".git").join("objects").join(&hash_str[..2]);
-    if !target_dir.exists() {
-        create_dir(&target_dir).context("could not create directory in .git/objects")?;
-    }
-
-    let target_file = target_dir.join(&hash_str[2..]);
-    if target_file.exists() {
-        return Ok(hash);
-    }
-
-    let file_out_fd = File::create(target_file).context("could not open target file")?;
-
-    let mut zlib_out = ZlibEncoder::new(file_out_fd, Compression::default());
-    write!(zlib_out, "{} {}\0", kind.string(), content.len()).context("could not write header")?;
-    zlib_out.write(content)?;
-    zlib_out
-        .finish()
-        .context("could not compress or write file")?;
-
-    Ok(hash)
 }
 
 impl<R: BufRead> Object<R> {
