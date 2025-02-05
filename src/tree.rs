@@ -15,6 +15,11 @@ pub fn write_tree(repo_path: &PathBuf, path: &PathBuf) -> Result<[u8; 20]> {
         let file_name = file.file_name();
         let file_path = file.path();
 
+        // Skip the .git directory
+        if file_name == ".git" {
+            continue;
+        }
+
         let hash: [u8; 20];
         let kind;
 
