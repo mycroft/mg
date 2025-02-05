@@ -8,6 +8,7 @@ use clap::Subcommand;
 mod commit;
 mod error;
 mod kind;
+mod log;
 mod object;
 mod repository;
 mod tree;
@@ -56,6 +57,8 @@ enum Command {
         /// The commit to show
         hash: Option<String>,
     },
+    /// Show the commit log
+    Log,
 }
 
 fn main() -> Result<(), Error> {
@@ -91,6 +94,10 @@ fn main() -> Result<(), Error> {
         Command::Show { hash } => match repo.show(hash) {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to show: {}", e),
+        },
+        Command::Log => match repo.log() {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to show log: {}", e),
         },
     }
 
