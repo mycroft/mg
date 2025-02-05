@@ -1,12 +1,11 @@
 use anyhow::{Context, Result};
-use sha1::{Digest, Sha1};
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 
 use crate::kind::Kind;
-use crate::object::{hash_file, TreeObject};
+use crate::object::{write_blob, write_object, TreeObject};
 
-pub fn write_tree(_repo_path: &PathBuf, path: &PathBuf) -> Result<[u8; 20]> {
+pub fn write_tree(repo_path: &PathBuf, path: &PathBuf) -> Result<[u8; 20]> {
     let mut entries = Vec::new();
 
     let files = std::fs::read_dir(path)?;
@@ -20,10 +19,13 @@ pub fn write_tree(_repo_path: &PathBuf, path: &PathBuf) -> Result<[u8; 20]> {
         let kind;
 
         if file_type.is_dir() {
-            hash = write_tree(_repo_path, &file_path).context("could not write_tree of subtree")?;
+            hash = write_tree(repo_path, &file_path).context("could not write_tree of subtree")?;
             kind = Kind::Tree;
         } else {
-            hash = hash_file(&file_path)?;
+            hash = write_blob(repo_path, &file_path).context(format!(
+                "could not write object {:?}",
+                file_path.file_name()
+            ))?;
             kind = Kind::Blob(file_path.metadata()?.mode() & 0o111 != 0);
         }
 
@@ -46,11 +48,5 @@ pub fn write_tree(_repo_path: &PathBuf, path: &PathBuf) -> Result<[u8; 20]> {
         out.extend_from_slice(&entry.hash);
     }
 
-    let header = format!("tree {}\0", out.len());
-
-    let mut hasher = Sha1::new();
-    hasher.update(header);
-    hasher.update(out);
-
-    Ok(hasher.finalize().into())
+    write_object(repo_path, Kind::Tree, &out).context("Write")
 }

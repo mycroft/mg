@@ -26,7 +26,7 @@ impl Kind {
             Kind::Blob(false) => "100644",
             Kind::Blob(true) => "100755",
             Kind::Commit => "160000",
-            Kind::Tree => "040000",
+            Kind::Tree => "40000",
             Kind::Symlink => "120000",
         }
     }

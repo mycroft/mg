@@ -5,8 +5,7 @@ use sha1::{Digest, Sha1};
 use std::io::Write;
 use std::{
     fs::{create_dir, File},
-    io::{copy, BufRead},
-    os::unix::fs::MetadataExt,
+    io::BufRead,
     path::Path,
 };
 
@@ -80,44 +79,41 @@ fn is_path_in_repo(repo_path: &Path, file_path: &Path) -> Result<bool> {
     Ok(file_canonical.starts_with(repo_canonical))
 }
 
-pub fn hash_file(file: &Path) -> Result<[u8; 20]> {
-    let fd = File::open(file).context("opening file for sha1")?;
-    let mut buf_reader = std::io::BufReader::new(fd);
-
-    let stat = file.metadata().context("stat on file")?;
-
-    let header = format!("blob {}\0", stat.size());
-
-    let mut hasher = Sha1::new();
-    hasher.update(header.as_bytes());
-    copy(&mut buf_reader, &mut hasher)?;
-
-    Ok(hasher.finalize().into())
-}
-
-pub fn write_object(repo_path: &Path, file: &Path) -> Result<[u8; 20]> {
+pub fn write_blob(repo_path: &Path, file: &Path) -> Result<[u8; 20]> {
     if !file.exists() || !is_path_in_repo(repo_path, file)? {
         return Err(anyhow!("path does not exist"));
     }
 
-    let hash = hash_file(file)?;
+    let content = std::fs::read(file)?;
+
+    Ok(write_object(repo_path, Kind::Blob(false), &content)?)
+}
+
+pub fn write_object(repo_path: &Path, kind: Kind, content: &[u8]) -> Result<[u8; 20]> {
+    let mut hasher = Sha1::new();
+    hasher.update(format!("{} {}\0", kind.string(), content.len()).as_bytes());
+    hasher.update(content);
+    let hash = hasher.finalize().into();
     let hash_str = hex::encode(hash);
-    let bytes_num = file.metadata()?.len();
-    let mut buf_reader = std::io::BufReader::new(File::open(file)?);
 
     let target_dir = repo_path.join(".git").join("objects").join(&hash_str[..2]);
-
     if !target_dir.exists() {
         create_dir(&target_dir).context("could not create directory in .git/objects")?;
     }
 
     let target_file = target_dir.join(&hash_str[2..]);
+    if target_file.exists() {
+        return Ok(hash);
+    }
+
     let file_out_fd = File::create(target_file).context("could not open target file")?;
 
     let mut zlib_out = ZlibEncoder::new(file_out_fd, Compression::default());
-    write!(zlib_out, "blob {}\0", bytes_num).context("could not write header")?;
-
-    std::io::copy(&mut buf_reader, &mut zlib_out).context("could not compress or write file")?;
+    write!(zlib_out, "{} {}\0", kind.string(), content.len()).context("could not write header")?;
+    zlib_out.write(content)?;
+    zlib_out
+        .finish()
+        .context("could not compress or write file")?;
 
     Ok(hash)
 }

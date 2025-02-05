@@ -10,7 +10,7 @@ mod kind;
 mod object;
 mod tree;
 
-use crate::object::{read_object, write_object};
+use crate::object::{read_object, write_blob};
 use crate::tree::write_tree;
 
 #[derive(Parser)]
@@ -76,7 +76,7 @@ fn main() -> Result<(), Error> {
             Ok(mut obj) => print!("{}", obj.string()?),
             Err(e) => eprintln!("Failed to read object: {}", e),
         },
-        Command::WriteBlob { file } => match write_object(&repo_path, &file) {
+        Command::WriteBlob { file } => match write_blob(&repo_path, &file) {
             Ok(hash) => println!("{}", hex::encode(hash)),
             Err(e) => eprintln!("Failed to write object: {}", e),
         },
