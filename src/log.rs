@@ -13,7 +13,14 @@ impl Repository {
             let commit_desc = commit.string()?;
             let lines = commit_desc.lines().collect::<Vec<&str>>();
 
-            println!("{} {}", hex::encode(current_commit), lines[lines.len() - 1]);
+            // find the first empty line
+            let first_empty_line = lines.iter().position(|line| line.is_empty());
+
+            println!(
+                "{} {}",
+                hex::encode(current_commit),
+                lines[first_empty_line.unwrap() + 1]
+            );
 
             let parent_commit_id = lines.iter().find(|line| line.starts_with("parent "));
             if parent_commit_id.is_none() {
