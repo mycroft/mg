@@ -7,6 +7,7 @@ use clap::Subcommand;
 
 mod commit;
 mod error;
+mod index;
 mod kind;
 mod log;
 mod object;
@@ -59,6 +60,8 @@ enum Command {
     },
     /// Show the commit log
     Log,
+    /// List the index entries
+    LsIndex,
 }
 
 fn main() -> Result<(), Error> {
@@ -98,6 +101,10 @@ fn main() -> Result<(), Error> {
         Command::Log => match repo.log() {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to show log: {}", e),
+        },
+        Command::LsIndex => match repo.read_index() {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to list index: {}", e),
         },
     }
 

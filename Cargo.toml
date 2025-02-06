@@ -8,5 +8,6 @@ anyhow = "1.0.95"
 clap = { version = "4.5.27", features = ["derive", "string"] }
 flate2 = "1.0.35"
 hex = "0.4.3"
+nom = "8.0.0"
 sha1 = "0.10.6"
 thiserror = "2.0.11"
