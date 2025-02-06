@@ -88,6 +88,8 @@ impl Repository {
         // update current branch's commit id
         self.set_current_commit(&hash)?;
 
+        self.write_index()?;
+
         Ok(hash)
     }
 

@@ -62,6 +62,8 @@ enum Command {
     Log,
     /// List the index entries
     LsIndex,
+    /// Write the index file
+    WriteIndex,
 }
 
 fn main() -> Result<(), Error> {
@@ -105,6 +107,10 @@ fn main() -> Result<(), Error> {
         Command::LsIndex => match repo.read_index() {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to list index: {}", e),
+        },
+        Command::WriteIndex => match repo.write_index() {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to write index: {}", e),
         },
     }
 

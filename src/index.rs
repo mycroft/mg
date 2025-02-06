@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{os::linux::fs::MetadataExt, path::Path};
 
 use nom::{
     bytes::complete::take,
@@ -7,6 +7,8 @@ use nom::{
 };
 
 use anyhow::{anyhow, Error, Result};
+use sha1::{Digest, Sha1};
+use walkdir::WalkDir;
 
 use crate::repository::Repository;
 
@@ -147,4 +149,108 @@ impl Repository {
 
         Ok(())
     }
+
+    pub fn write_index(&self) -> Result<()> {
+        let index_path = self.path.join(".git").join("index");
+
+        // list all files in the repository
+        let files = list_all_files(&self.path, &self.ignore)?;
+
+        let index = Index {
+            header: IndexHeader {
+                signature: *b"DIRC",
+                version: 2,
+                entries_count: files.len() as u32,
+            },
+            entries: Vec::new(),
+        };
+
+        let mut content = Vec::new();
+        content.extend_from_slice(&index.header.signature);
+        content.extend_from_slice(&index.header.version.to_be_bytes());
+        content.extend_from_slice(&index.header.entries_count.to_be_bytes());
+
+        for file in files {
+            let metadata = std::fs::metadata(self.path.join(file.clone()))?;
+
+            let entry = IndexEntry {
+                ctime_s: metadata.st_ctime() as u32,
+                ctime_n: metadata.st_ctime_nsec() as u32,
+                mtime_s: metadata.st_mtime() as u32,
+                mtime_n: metadata.st_mtime_nsec() as u32,
+                dev: metadata.st_dev() as u32,
+                ino: metadata.st_ino() as u32,
+                mode: metadata.st_mode(),
+                uid: metadata.st_uid(),
+                gid: metadata.st_gid(),
+                size: metadata.st_size() as u32,
+                sha1: hash_file(&self.path.join(file.clone()))?,
+                flags: 0,
+                file_path: file,
+            };
+
+            let mut entry_content = Vec::new();
+            entry_content.extend_from_slice(&entry.ctime_s.to_be_bytes());
+            entry_content.extend_from_slice(&entry.ctime_n.to_be_bytes());
+            entry_content.extend_from_slice(&entry.mtime_s.to_be_bytes());
+            entry_content.extend_from_slice(&entry.mtime_n.to_be_bytes());
+            entry_content.extend_from_slice(&entry.dev.to_be_bytes());
+            entry_content.extend_from_slice(&entry.ino.to_be_bytes());
+            entry_content.extend_from_slice(&entry.mode.to_be_bytes());
+            entry_content.extend_from_slice(&entry.uid.to_be_bytes());
+            entry_content.extend_from_slice(&entry.gid.to_be_bytes());
+            entry_content.extend_from_slice(&entry.size.to_be_bytes());
+            entry_content.extend_from_slice(&entry.sha1);
+            //entry_content.extend_from_slice(&entry.flags.to_be_bytes());
+
+            let path_bytes = entry.file_path.as_bytes();
+            entry_content.extend_from_slice(&(path_bytes.len() as u16).to_be_bytes());
+            entry_content.extend_from_slice(path_bytes);
+
+            //  between 1 and 8 NUL bytes to pad the entry.
+            let padding_len = 8 - entry_content.len() % 8;
+            entry_content.extend(vec![0u8; padding_len]);
+
+            content.extend(entry_content);
+        }
+
+        std::fs::write(index_path, content)?;
+
+        Ok(())
+    }
+}
+
+pub fn list_all_files(path: &Path, ignore_list: &[String]) -> Result<Vec<String>> {
+    let mut files = Vec::new();
+
+    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            if ignore_list.iter().any(|i| entry.path().ends_with(i)) {
+                continue;
+            }
+
+            let s = entry.path().to_path_buf().to_str().unwrap().to_string();
+            let s = s.strip_prefix(path.to_str().unwrap()).unwrap().to_string();
+
+            if ignore_list.iter().any(|i| s.starts_with(i)) {
+                continue;
+            }
+
+            files.push(s.strip_prefix("/").unwrap().to_string());
+        }
+    }
+
+    files.sort();
+
+    Ok(files)
+}
+
+fn hash_file(path: &Path) -> Result<[u8; 20]> {
+    let content = std::fs::read(path)?;
+
+    let mut hasher = Sha1::new();
+    hasher.update(format!("blob {}\0", content.len()).as_bytes());
+    hasher.update(content);
+
+    Ok(hasher.finalize().into())
 }

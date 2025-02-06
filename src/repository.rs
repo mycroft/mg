@@ -38,6 +38,7 @@ impl Repository {
 
         let ignore_content = read_to_string(ignore_path)?;
         self.ignore = ignore_content.lines().map(String::from).collect();
+        self.ignore.push("/.git/".to_string());
 
         Ok(true)
     }
