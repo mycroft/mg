@@ -344,8 +344,79 @@ impl Repository {
             );
         }
 
-        // At the end of the file, there should be a 20-byte SHA-1 checksum
-        // TBD
+        let mut checksum_pack = [0; 20];
+        file.read_exact(&mut checksum_pack)?;
+
+        Ok(())
+    }
+
+    pub fn dump_pack_index_file(&self, pack_id: &str) -> Result<(), Error> {
+        let file_path = self
+            .path
+            .join(format!(".git/objects/pack/pack-{}.idx", pack_id));
+
+        let mut file = File::open(file_path)?;
+
+        let mut buf = [0; 4];
+        file.read_exact(&mut buf)?;
+
+        if buf[0] != 0xff || "t0c".as_bytes() == &buf[1..4] {
+            return Err(Error::msg("Invalid pack index magic"));
+        }
+
+        file.read_exact(&mut buf)?;
+        let version = u32::from_be_bytes(buf);
+        println!("{}", version);
+        if version != 2 {
+            return Err(Error::msg("Invalid pack index version"));
+        }
+
+        let mut num_objects: u32 = 0;
+        let mut fanout_table = [0u32; 256];
+
+        // fanout table: 256 x 8 bytes
+        let mut buf = [0u8; 256 * 4];
+        file.read_exact(&mut buf)?;
+
+        for idx in 0..256 {
+            let offset = idx * 4;
+            num_objects = u32::from_be_bytes(buf[offset..offset + 4].try_into().unwrap());
+            fanout_table[idx] = num_objects;
+        }
+
+        let mut names = vec![0u8; 20 * num_objects as usize];
+        file.read_exact(&mut names)?;
+
+        let mut crc32_buf = vec![0u8; 4 * num_objects as usize];
+        file.read_exact(&mut crc32_buf)?;
+        let crc32: Vec<u32> = crc32_buf
+            .chunks_exact(4)
+            .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()))
+            .collect();
+
+        let mut offsets_buf = vec![0u8; 4 * num_objects as usize];
+        file.read_exact(&mut offsets_buf)?;
+        let offsets: Vec<u32> = offsets_buf
+            .chunks_exact(4)
+            .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()))
+            .collect();
+
+        for i in 0..num_objects {
+            let offset = offsets[i as usize];
+            let crc32 = crc32[i as usize];
+            let name = &names[(i * 20) as usize..(i * 20 + 20) as usize];
+            println!(
+                "{} offset: 0x{:x} crc32: {}",
+                hex::encode(name),
+                offset,
+                crc32
+            );
+        }
+
+        let mut checksum_pack = [0; 20];
+        file.read_exact(&mut checksum_pack)?;
+        let mut checksum_idx = [0; 20];
+        file.read_exact(&mut checksum_idx)?;
 
         Ok(())
     }

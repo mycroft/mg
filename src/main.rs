@@ -67,6 +67,11 @@ enum Command {
     WriteIndex,
     /// Dump Pack Files
     DumpPackFiles,
+    /// Dump Pack Index file
+    DumpPackIndexFile {
+        /// The pack index file to dump
+        pack_id: String,
+    },
 }
 
 fn main() -> Result<(), Error> {
@@ -118,6 +123,10 @@ fn main() -> Result<(), Error> {
         Command::DumpPackFiles => match repo.dump_pack_files() {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to dump pack files: {}", e),
+        },
+        Command::DumpPackIndexFile { pack_id } => match repo.dump_pack_index_file(&pack_id) {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to dump pack index file: {}", e),
         },
     }
 
