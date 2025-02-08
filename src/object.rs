@@ -2,6 +2,7 @@ use crate::repository::Repository;
 use crate::{error::RuntimeError, kind::Kind};
 use anyhow::{anyhow, Context, Result};
 use flate2::{write::ZlibEncoder, Compression};
+
 use sha1::{Digest, Sha1};
 use std::io::Write;
 use std::{
@@ -82,7 +83,7 @@ impl Repository {
 
     pub fn write_object(&self, kind: Kind, content: &[u8]) -> Result<[u8; 20]> {
         let mut hasher = Sha1::new();
-        hasher.update(format!("{} {}\0", kind.string(), content.len()).as_bytes());
+        hasher.update(format!("{} {}\0", kind, content.len()).as_bytes());
         hasher.update(content);
         let hash = hasher.finalize().into();
         let hash_str = hex::encode(hash);
@@ -100,8 +101,7 @@ impl Repository {
         let file_out_fd = File::create(target_file).context("could not open target file")?;
 
         let mut zlib_out = ZlibEncoder::new(file_out_fd, Compression::default());
-        write!(zlib_out, "{} {}\0", kind.string(), content.len())
-            .context("could not write header")?;
+        write!(zlib_out, "{} {}\0", kind, content.len()).context("could not write header")?;
         zlib_out.write_all(content)?;
         zlib_out
             .finish()
@@ -109,6 +109,18 @@ impl Repository {
 
         Ok(hash)
     }
+}
+
+pub fn hash_object(file: &Path) -> Result<[u8; 20]> {
+    let content = std::fs::read(file)?;
+
+    let kind = Kind::Blob(false);
+    let mut hasher = Sha1::new();
+    hasher.update(format!("{} {}\0", kind, content.len()).as_bytes());
+    hasher.update(content);
+    let hash = hasher.finalize().into();
+
+    Ok(hash)
 }
 
 fn is_path_in_repo(repo_path: &Path, file_path: &Path) -> Result<bool> {
@@ -178,7 +190,7 @@ impl<R: BufRead> Object<R> {
                         format!(
                             "{:0>6} {} {}    {:name_len$}",
                             entry.mode,
-                            entry.kind.string(),
+                            entry.kind,
                             hash,
                             entry.name,
                             name_len = max_name_len
@@ -191,5 +203,33 @@ impl<R: BufRead> Object<R> {
         };
 
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hex::FromHex;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_object_string() {
+        let data = b"hello";
+        let _obj = Object {
+            kind: Kind::Blob(true),
+            _size: 5,
+            data: Cursor::new(data),
+        };
+
+        let temp_file = std::env::temp_dir().join("temp_file");
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(data).unwrap();
+
+        let res = hash_object(&temp_file);
+
+        assert_eq!(
+            res.unwrap(),
+            <[u8; 20]>::from_hex("b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0").unwrap(),
+        );
     }
 }

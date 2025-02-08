@@ -1,3 +1,5 @@
+use std::fmt;
+
 use anyhow::{anyhow, Result};
 
 #[derive(Debug)]
@@ -30,13 +32,16 @@ impl Kind {
             Kind::Symlink => "120000",
         }
     }
+}
 
-    pub fn string(&self) -> &str {
-        match self {
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let kind = match self {
             Kind::Blob(_) => "blob",
             Kind::Commit => "commit",
             Kind::Tree => "tree",
             Kind::Symlink => "symlink",
-        }
+        };
+        write!(f, "{}", kind)
     }
 }

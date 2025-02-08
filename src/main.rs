@@ -1,4 +1,5 @@
 use anyhow::{Error, Result};
+use object::hash_object;
 use repository::default_init_path;
 use std::path::PathBuf;
 
@@ -72,6 +73,11 @@ enum Command {
         /// The pack index file to dump
         pack_id: String,
     },
+    /// Hash an object
+    HashObject {
+        /// The object to hash
+        file: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Error> {
@@ -127,6 +133,10 @@ fn main() -> Result<(), Error> {
         Command::DumpPackIndexFile { pack_id } => match repo.dump_pack_index_file(&pack_id) {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to dump pack index file: {}", e),
+        },
+        Command::HashObject { file } => match hash_object(&file) {
+            Ok(hash) => println!("{}", hex::encode(hash)),
+            Err(e) => eprintln!("Failed to hash object: {}", e),
         },
     }
 

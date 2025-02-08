@@ -378,10 +378,9 @@ impl Repository {
         let mut buf = [0u8; 256 * 4];
         file.read_exact(&mut buf)?;
 
-        for idx in 0..256 {
-            let offset = idx * 4;
-            num_objects = u32::from_be_bytes(buf[offset..offset + 4].try_into().unwrap());
-            fanout_table[idx] = num_objects;
+        for (idx, fanout_record) in fanout_table.iter_mut().enumerate() {
+            num_objects = u32::from_be_bytes(buf[idx * 4..idx * 4 + 4].try_into().unwrap());
+            *fanout_record = num_objects;
         }
 
         let mut names = vec![0u8; 20 * num_objects as usize];
