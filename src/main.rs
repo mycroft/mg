@@ -11,6 +11,7 @@ mod index;
 mod kind;
 mod log;
 mod object;
+mod pack;
 mod repository;
 mod tree;
 
@@ -64,6 +65,8 @@ enum Command {
     LsIndex,
     /// Write the index file
     WriteIndex,
+    /// Dump Pack Files
+    DumpPackFiles,
 }
 
 fn main() -> Result<(), Error> {
@@ -111,6 +114,10 @@ fn main() -> Result<(), Error> {
         Command::WriteIndex => match repo.write_index() {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to write index: {}", e),
+        },
+        Command::DumpPackFiles => match repo.dump_pack_files() {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to dump pack files: {}", e),
         },
     }
 
