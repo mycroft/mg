@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::Error;
 use flate2::read::ZlibDecoder;
+use sha1::{Digest, Sha1};
 
 use crate::repository::Repository;
 
@@ -22,6 +23,8 @@ struct PackObject {
     object_type: PackObjectType,
     object_size: u32,
     object_data: Vec<u8>,
+    pos: u64,
+    end_pos: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -109,10 +112,7 @@ where
     Ok(val)
 }
 
-fn read_vli_be<R>(file: &mut BufReader<R>, offset: bool) -> Result<u32, Error>
-where
-    R: Read,
-{
+fn read_vli_be(file: &mut File, offset: bool) -> Result<u32, Error> {
     let mut val: u32 = 0;
     loop {
         let mut byte = [0; 1];
@@ -132,18 +132,25 @@ where
     Ok(val)
 }
 
+fn decompress_file(file: &mut File) -> Result<Vec<u8>, Error> {
+    let mut object_data = Vec::new();
+
+    let pos = file.stream_position()?;
+    let mut zlib_decoder = ZlibDecoder::new(&mut *file);
+    zlib_decoder.read_to_end(&mut object_data)?;
+    let read_bytes = zlib_decoder.total_in();
+    file.seek(std::io::SeekFrom::Start(pos + read_bytes))?;
+
+    Ok(object_data)
+}
+
 fn make_delta_obj(
     file: &mut File,
     base_obj: PackObject,
     object_size: u32,
 ) -> Result<PackObject, Error> {
-    let mut object_data = Vec::new();
-
-    let pos = file.seek(SeekFrom::Current(0))?;
-    let mut zlib_decoder = ZlibDecoder::new(&mut *file);
-    zlib_decoder.read_to_end(&mut object_data)?;
-    let read_bytes = zlib_decoder.total_in();
-    file.seek(std::io::SeekFrom::Start(pos + read_bytes))?;
+    let current_pos = file.stream_position()?;
+    let object_data = decompress_file(file)?;
 
     assert_eq!(object_data.len(), object_size as usize);
 
@@ -158,7 +165,7 @@ fn make_delta_obj(
     // );
 
     let mut obj_data = Vec::new();
-    while fp2.seek(SeekFrom::Current(0))? < object_data.len() as u64 {
+    while fp2.stream_position()? < object_data.len() as u64 {
         let mut byte = [0; 1];
         fp2.read_exact(&mut byte)?;
         let byt = byte[0];
@@ -170,13 +177,14 @@ fn make_delta_obj(
         if byt & 0x80 != 0 {
             // copy data from base object
             let mut vals = [0; 6];
-            for i in 0..6 {
+
+            for (i, val) in vals.iter_mut().enumerate() {
                 let bmask = 1 << i;
                 if byt & bmask != 0 {
                     fp2.read_exact(&mut byte)?;
-                    vals[i] = byte[0];
+                    *val = byte[0];
                 } else {
-                    vals[i] = 0;
+                    *val = 0;
                 }
             }
 
@@ -205,6 +213,8 @@ fn make_delta_obj(
         object_type: base_obj.object_type,
         object_size: patched_obj_size,
         object_data: obj_data,
+        pos: current_pos,
+        end_pos: file.stream_position()?,
     })
 }
 
@@ -215,10 +225,10 @@ fn parse_pack_ofs_delta_object(
 ) -> Result<PackObject, Error> {
     // println!("pos: 0x{:x}", file.seek(SeekFrom::Current(0))?);
 
-    let mut reader = BufReader::new(&mut *file);
-    let offset = read_vli_be(&mut reader, true)?;
-    let new_position = reader.stream_position()?;
-    file.seek(SeekFrom::Start(new_position))?;
+    // let mut reader = BufReader::new(&mut *file);
+    let offset = read_vli_be(file, true)?;
+    // let new_position = reader.stream_position()?;
+    // file.seek(SeekFrom::Start(new_position))?;
 
     let base_obj_offset = fpos - offset as u64;
 
@@ -227,11 +237,11 @@ fn parse_pack_ofs_delta_object(
     //     offset, base_obj_offset
     // );
 
-    let prev_pos = file.seek(SeekFrom::Current(0))?;
+    let prev_pos = file.stream_position()?;
     file.seek(SeekFrom::Start(base_obj_offset))?;
 
     let base_obj = parse_pack_entry(file)?;
-    assert!(vec![
+    assert!([
         PackObjectType::Commit,
         PackObjectType::Tree,
         PackObjectType::Blob,
@@ -245,12 +255,12 @@ fn parse_pack_ofs_delta_object(
 }
 
 fn parse_pack_entry(file: &mut File) -> Result<PackObject, Error> {
-    let object_pos = file.seek(SeekFrom::Current(0))?;
+    let object_pos = file.stream_position()?;
 
     let mut byte = [0; 1];
     file.read_exact(&mut byte)?;
     let object_type: u8 = (byte[0] & 0x70) >> 4;
-    let mut object_data = Vec::new();
+    let object_data;
 
     let mut object_size: u32 = (byte[0] & 0x0f) as u32;
     let mut bshift = 4;
@@ -260,27 +270,19 @@ fn parse_pack_entry(file: &mut File) -> Result<PackObject, Error> {
         bshift += 7;
     }
 
-    println!(
-        "Reading object: fpos=0x{:x}, type:{} size:{}",
-        object_pos,
-        PackObjectType::from_u8(object_type)?,
-        object_size
-    );
+    // println!(
+    //     "Reading object: fpos=0x{:x}, type:{} size:{}",
+    //     object_pos,
+    //     PackObjectType::from_u8(object_type)?,
+    //     object_size
+    // );
 
     match PackObjectType::from_u8(object_type)? {
         PackObjectType::Commit
         | PackObjectType::Tree
         | PackObjectType::Blob
         | PackObjectType::Tag => {
-            // get current file offset
-            let pos = file.seek(SeekFrom::Current(0))?;
-            let mut zlib_decoder = ZlibDecoder::new(&mut *file);
-
-            zlib_decoder.read_to_end(&mut object_data)?;
-            let read_bytes = zlib_decoder.total_in();
-
-            file.seek(std::io::SeekFrom::Start(pos + read_bytes))?;
-
+            object_data = decompress_file(file)?;
             assert_eq!(object_data.len(), object_size as usize);
         }
         PackObjectType::OfsDelta => {
@@ -293,6 +295,8 @@ fn parse_pack_entry(file: &mut File) -> Result<PackObject, Error> {
         object_type: PackObjectType::from_u8(object_type)?,
         object_size,
         object_data,
+        pos: object_pos,
+        end_pos: file.stream_position()?,
     })
 }
 
@@ -324,14 +328,20 @@ impl Repository {
         println!("{:?}", header);
 
         for _ in 0..header.num_objects {
-            let _obj = parse_pack_entry(&mut file)?;
-            // println!(
-            //     "Read object: type={}, #bytes={}",
-            //     obj.object_type, obj.object_size
-            // );
-            // println!("{:?}", obj);
+            let obj = parse_pack_entry(&mut file)?;
 
-            // println!();
+            let mut hasher = Sha1::new();
+            hasher.update(format!("{} {}\0", obj.object_type, obj.object_size).as_bytes());
+            hasher.update(obj.object_data);
+
+            println!(
+                "{} {} {} {} {}",
+                hex::encode(hasher.finalize()),
+                obj.object_type,
+                obj.object_size,
+                obj.end_pos - obj.pos,
+                obj.pos,
+            );
         }
 
         // At the end of the file, there should be a 20-byte SHA-1 checksum
