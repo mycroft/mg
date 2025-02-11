@@ -66,6 +66,11 @@ enum Command {
     LsIndex,
     /// Write the index file
     WriteIndex,
+    /// Dump a Pack File
+    DumpPack {
+        /// The pack file to dump
+        file: PathBuf,
+    },
     /// Dump Pack Files
     DumpPackFiles,
     /// Dump Pack Index file
@@ -129,6 +134,10 @@ fn main() -> Result<(), Error> {
         Command::DumpPackFiles => match repo.dump_pack_files() {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to dump pack files: {}", e),
+        },
+        Command::DumpPack { file } => match repo.dump_pack(&file) {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to dump pack: {}", e),
         },
         Command::DumpPackIndexFile { pack_id } => match repo.dump_pack_index_file(&pack_id) {
             Ok(_) => (),

@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{BufReader, Cursor, Read, Seek, SeekFrom},
+    path::Path,
 };
 
 use anyhow::Error;
@@ -317,12 +318,8 @@ impl Repository {
         Ok(())
     }
 
-    pub fn dump_pack_file(&self, pack_id: &str) -> Result<(), Error> {
-        let file_path = self
-            .path
-            .join(format!(".git/objects/pack/pack-{}.pack", pack_id));
-
-        let mut file = File::open(file_path)?;
+    pub fn dump_pack(&self, path: &Path) -> Result<(), Error> {
+        let mut file = File::open(path)?;
 
         let header = parse_pack_header(&mut file)?;
         println!("{:?}", header);
@@ -348,6 +345,14 @@ impl Repository {
         file.read_exact(&mut checksum_pack)?;
 
         Ok(())
+    }
+
+    pub fn dump_pack_file(&self, pack_id: &str) -> Result<(), Error> {
+        let file_path = self
+            .path
+            .join(format!(".git/objects/pack/pack-{}.pack", pack_id));
+
+        self.dump_pack(&file_path)
     }
 
     pub fn dump_pack_index_file(&self, pack_id: &str) -> Result<(), Error> {
