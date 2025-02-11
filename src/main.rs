@@ -8,6 +8,7 @@ use clap::Subcommand;
 
 mod commit;
 mod error;
+mod http;
 mod index;
 mod kind;
 mod log;
@@ -16,6 +17,7 @@ mod pack;
 mod repository;
 mod tree;
 
+use crate::http::clone;
 use crate::repository::Repository;
 
 #[derive(Parser)]
@@ -83,9 +85,14 @@ enum Command {
         /// The object to hash
         file: PathBuf,
     },
+    Clone {
+        /// The repository to clone
+        repo: String,
+    },
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
 
     let mut repo = Repository::new()?;
@@ -146,6 +153,10 @@ fn main() -> Result<(), Error> {
         Command::HashObject { file } => match hash_object(&file) {
             Ok(hash) => println!("{}", hex::encode(hash)),
             Err(e) => eprintln!("Failed to hash object: {}", e),
+        },
+        Command::Clone { repo } => match clone(&repo).await {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to clone: {}", e),
         },
     }
 
